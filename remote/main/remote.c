@@ -112,7 +112,7 @@ static void remote_controller(void) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    uint8_t flightMode = 0; // 0 Rate, 1 Angle
+    uint8_t contorlMode = 0; // 0 Standard, 1 Dual stick
     uint8_t modePressed = 0;
     uint8_t emergencyPressed = 0;
     uint8_t emergencyShutdown = 0;
@@ -127,11 +127,11 @@ static void remote_controller(void) {
             // Was a joystick pressed?
             if (xTaskNotifyWait(0, 0xFFFFFFFF, &notifyValue, 0) == pdTRUE) {
                 switch (notifyValue) {
-                case 33: // Flight Mode
+                case 33: // Switch Modes
                     modePressed = 1;
                     if (armed) {
-                        flightMode ^= 1;
-                        ESP_LOGI(TAG, "Flight Mode %d", flightMode);
+                        contorlMode ^= 1;
+                        ESP_LOGI(TAG, "Control Mode %d", contorlMode);
                     }
                     break;
 
@@ -161,12 +161,16 @@ static void remote_controller(void) {
             }
 
             memset(adcPacket, 0, sizeof(adcPacket));
-            adcPacket[0] = 1;                                      // Setpoint update
-            adcPacket[1] = (emergencyShutdown) ? 0 : adcValues[0]; // Throttle
-            adcPacket[2] = adcValues[1];                           // Pitch
-            adcPacket[3] = adcValues[2];                           // Roll
-            adcPacket[4] = adcValues[3];                           // Yaw
-            adcPacket[5] = (uint16_t) flightMode;                  // Mode
+            adcPacket[0] = 1;                                                  // Setpoint update
+            adcPacket[1] = (emergencyShutdown) ? (ADC_MAX / 2) : adcValues[0]; // Slider
+            adcPacket[2] = (emergencyShutdown) ? (ADC_MAX / 2) : adcValues[1]; // Left Joystick F/B
+            adcPacket[3] = (emergencyShutdown) ? (ADC_MAX / 2) : adcValues[2]; // Left Joystick L/R
+            adcPacket[4] = (emergencyShutdown) ? (ADC_MAX / 2) : adcValues[3]; // Right Joystick L/R
+            adcPacket[5] = (uint16_t) contorlMode;                             // Mode
+            adcPacket[6] = (emergencyShutdown) ? (ADC_MAX / 2) : adcValues[4]; // Right Joystick F/B
+
+            // ESP_LOGI(TAG, "Mode %d, LEFT X: %d Y: %d, RIGHT X: %d Y: %d", adcPacket[5], adcPacket[2], adcPacket[3],
+            //          adcPacket[6], adcPacket[4]);
 
             // Send the resulting packet to the radio task
             if (radioTransmitterQueue && armed) {
@@ -186,12 +190,8 @@ static void remote_controller(void) {
                 continue;
             }
 
-            ESP_LOGI(TAG,
-                     "Mode: %s, Angles: P=%d R=%d Y=%d, Rates: P=%d R=%d Y=%d, PID: P=%d R=%d Y=%d, Motors: FL=%u "
-                     "BL=%u BR=%u FR=%u BAT=%f",
-                     data[6] ? "ANGLE" : "RATE", data[0], data[1], data[2], data[3], data[4], data[5], data[7], data[8],
-                     data[9], adcPacket[10], adcPacket[11], adcPacket[12], adcPacket[13], 
-                     mapf(adcPacket[14], 0, 4096, 0, 16.8));
+            ESP_LOGI(TAG, "Mode: %s, Motors: LEFT=%d RIGHT=%d BAT=%f", data[6] ? "ANGLE" : "RATE", data[10], data[11],
+                     mapf(data[14], 0, 4096, 0, 16.8));
         }
     }
 }
